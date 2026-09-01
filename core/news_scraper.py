@@ -43,23 +43,64 @@ class NewsScraper:
         limit: int = 6,
     ) -> List[Dict[str, str]]:
         """
-        Fetch and parse news links for `symbol`.
+        Fetch news for `symbol`.
+
+        Source order (first success wins):
+          1. Google News RSS (reliable keyword search, needs no JS)
+          2. AAStocks list page (fallback)
 
         Returns up to `limit` items: [{"title", "url", "source"}].
-        Empty list on any fetch/parse failure (never raises to caller).
+        Empty list on any failure (never raises to caller).
         """
+        # 1) Google News RSS — keyword search on the symbol.
+        news = self._fetch_google_news(symbol, limit)
+        if news:
+            return news
+
+        # 2) Fallback to the old AAStocks page scraping.
         url = base_url + path
         try:
             resp = self.session.get(url, timeout=REQUEST_TIMEOUT)
             resp.raise_for_status()
+            # Polite delay AFTER a successful fetch.
+            time.sleep(SCRAPE_DELAY_SECONDS)
         except Exception as exc:  # network / HTTP errors
             print(f"[news_scraper] fetch failed for {symbol}: {exc}")
             return []
 
-        # Polite delay AFTER a successful fetch, before any follow-up.
-        time.sleep(SCRAPE_DELAY_SECONDS)
-
         return self._parse(resp.text, base_url, limit)
+
+    def _fetch_google_news(self, symbol: str, limit: int) -> List[Dict[str, str]]:
+        """Google News RSS by keyword (HK, Traditional Chinese) — no JS needed."""
+        import re
+        import urllib.parse
+
+        q = urllib.parse.quote(f"{symbol} 股票")
+        rss_url = (
+            "https://news.google.com/rss/search?q=" + q +
+            "&hl=zh-HK&gl=HK&ceid=HK:zh-Hant"
+        )
+        try:
+            resp = self.session.get(rss_url, timeout=REQUEST_TIMEOUT)
+            resp.raise_for_status()
+        except Exception as exc:
+            print(f"[news_scraper] google news failed: {exc}")
+            return []
+
+        items: List[Dict[str, str]] = []
+        for block in re.findall(r"<item>.*?</item>", resp.text, re.S):
+            m_title = re.search(r"<title>(.*?)</title>", block, re.S)
+            m_link = re.search(r"<link>(.*?)</link>", block, re.S)
+            if not m_title:
+                continue
+            title = m_title.group(1).strip()
+            link = m_link.group(1).strip() if m_link else ""
+            if not title or len(title) < 8:
+                continue
+            items.append({"title": title[:120], "url": link, "source": "Google News"})
+            if len(items) >= limit:
+                break
+        return items
 
     def _parse(self, html: str, base_url: str, limit: int) -> List[Dict[str, str]]:
         soup = BeautifulSoup(html, "html.parser")
