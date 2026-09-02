@@ -19,6 +19,8 @@ Secrets:
     They are optional: the app runs fully without Supabase.
 """
 
+# TEST-MARKER-20260902: harmless annotation to verify Streamlit auto-redeploy
+
 from __future__ import annotations
 
 import json
