@@ -126,7 +126,7 @@ def render_reference_table(ref: dict) -> None:
             rows.append((key, _format_value(val)))
 
     df = pd.DataFrame(rows, columns=["Metric", "Value"])
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +159,7 @@ with st.sidebar:
     symbol = st.text_input("HK stock code", value=load_sidebar_state()).strip()
     st.caption("e.g. 09868, 06082, 0700, 9988 (leading zeros optional)")
 
-    if st.button("🔍 Run analysis", type="primary", use_container_width=True):
+    if st.button("🔍 Run analysis", type="primary", width="stretch"):
         st.session_state["run"] = True
 
     st.divider()
@@ -211,7 +211,7 @@ if ref:
 
 # --- Chart ---
 chart_png = render_chart(ta, report["symbol"])
-st.image(chart_png, use_container_width=True, caption=f"{report['symbol']} — chart")
+st.image(chart_png, width="stretch", caption=f"{report['symbol']} — chart")
 
 # --- Reference table ---
 with st.expander("📊 Reference levels", expanded=True):
