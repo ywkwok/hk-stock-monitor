@@ -89,6 +89,27 @@ def build_report(symbol: str) -> dict:
 # ---------------------------------------------------------------------------
 # Reference-levels rendering helpers
 # ---------------------------------------------------------------------------
+def _format_value(v):
+    """Coerce a reference value into a single safe, displayable type.
+
+    The Value column may hold floats, None, or free-text notes (engine name,
+    structure description, date string).  Mixing numeric floats and text in one
+    column produces an object dtype, which newer pyarrow rejects when Streamlit
+    serialises the table (ArrowTypeError).  Coercing every cell to str keeps
+    the whole column uniform and Arrow-safe.
+    """
+    if v is None:
+        return "--"
+    # bool is a subclass of int; keep it as text too for uniformity
+    if isinstance(v, bool):
+        return str(v)
+    if isinstance(v, (int, float)):
+        # 3 dp like the rounding applied upstream; trim trailing zeros
+        num = round(float(v), 3)
+        return f"{num:g}"
+    return str(v)
+
+
 def render_reference_table(ref: dict) -> None:
     """Display the structured reference-level dict as a readable table."""
     if not ref:
@@ -100,9 +121,9 @@ def render_reference_table(ref: dict) -> None:
     for key, val in ref.items():
         if isinstance(val, dict):
             for k2, v2 in val.items():
-                rows.append((f"{key} / {k2}", v2))
+                rows.append((f"{key} / {k2}", _format_value(v2)))
         else:
-            rows.append((key, val))
+            rows.append((key, _format_value(val)))
 
     df = pd.DataFrame(rows, columns=["Metric", "Value"])
     st.dataframe(df, use_container_width=True, hide_index=True)
