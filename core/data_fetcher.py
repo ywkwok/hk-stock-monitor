@@ -96,6 +96,9 @@ def fetch_yahoo(code: str, lookback_days: int = 365) -> pd.DataFrame:
             result = data["chart"]["result"][0]
             ts = result["timestamp"]
             q = result["indicators"]["quote"][0]
+            # meta carries the display name (shortName e.g. "SMIC"); Yahoo provides no Chinese.
+            meta = result.get("meta") or {}
+            stock_name = (meta.get("shortName") or meta.get("longName") or "").strip()
             rows = []
             for i, t in enumerate(ts):
                 o = q["open"][i]
@@ -110,6 +113,7 @@ def fetch_yahoo(code: str, lookback_days: int = 365) -> pd.DataFrame:
                     "volume": q["volume"][i] if q["volume"][i] is not None else 0.0,
                 })
             df = pd.DataFrame(rows)
+            df.attrs["stock_name"] = stock_name or None
             df = df.drop_duplicates(subset="date").sort_values("date").reset_index(drop=True)
             return df
         except Exception as exc:
@@ -138,7 +142,11 @@ def fetch_history(code: str, lookback: int = 120, sources: Optional[List[str]] =
                 continue
             if df is not None and len(df) >= 2:
                 df["symbol"] = code.strip()
-                return df.tail(lookback).reset_index(drop=True)
+                # Preserve the display name across tail()/reset_index() which may drop attrs.
+                name = df.attrs.get("stock_name")
+                out = df.tail(lookback).reset_index(drop=True)
+                out.attrs["stock_name"] = name
+                return out
         except Exception as exc:
             errors.append(f"{src}: {exc}")
     raise RuntimeError(f"All data sources failed for {code}: {'; '.join(errors)}")

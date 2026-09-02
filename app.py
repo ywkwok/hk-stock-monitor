@@ -71,6 +71,9 @@ def build_report(symbol: str) -> dict:
     ta = compute_indicators(hist)
     ref = derive_reference_levels(ta)
 
+    # Display name comes from the data source metadata (e.g. Yahoo shortName "SMIC").
+    stock_name = hist.attrs.get("stock_name") or ""
+
     news = []
     try:
         news = NewsScraper().fetch_news(symbol, limit=3)
@@ -79,6 +82,7 @@ def build_report(symbol: str) -> dict:
 
     report = {
         "symbol": symbol.strip(),
+        "name": stock_name.strip() if isinstance(stock_name, str) else "",
         "reference": ref,
         "news": news,
         "note": "Reference data only. No investment recommendation is provided.",
@@ -110,6 +114,30 @@ def _format_value(v):
     return str(v)
 
 
+def _pretty_metric(key: str) -> str:
+    """Turn technical-level keys into clearer, human-friendly display labels."""
+    pretty = {
+        # Bollinger Bands labels (Bollinger is the band context of bb_*).
+        "bb_upper": "Bollinger Upper",
+        "bb_middle": "Bollinger Middle",
+        "bb_lower": "Bollinger Lower",
+        "short_term_high_reference": "Short-term High Reference",
+        "short_term_low_reference": "Short-term Low Reference",
+        "structure_note": "Structure Note",
+        "last_close": "Last Close",
+        # SMA windows: sma_short/mid/long map to SMA-2 / SMA-19 / SMA-50.
+        "sma_short": "SMA-2",
+        "sma_mid": "SMA-19",
+        "sma_long": "SMA-50",
+    }
+    if key in pretty:
+        return pretty[key]
+    # Generic fallback: bb_xxx -> Bollinger xxx; else underscore -> space + title case.
+    if key.startswith("bb_"):
+        return "Bollinger " + key[3:].replace("_", " ").title()
+    return key.replace("_", " ").title()
+
+
 def render_reference_table(ref: dict) -> None:
     """Display the structured reference-level dict as a readable table."""
     if not ref:
@@ -121,9 +149,9 @@ def render_reference_table(ref: dict) -> None:
     for key, val in ref.items():
         if isinstance(val, dict):
             for k2, v2 in val.items():
-                rows.append((f"{key} / {k2}", _format_value(v2)))
+                rows.append((f"{_pretty_metric(key)} / {_pretty_metric(k2)}", _format_value(v2)))
         else:
-            rows.append((key, _format_value(val)))
+            rows.append((_pretty_metric(key), _format_value(val)))
 
     df = pd.DataFrame(rows, columns=["Metric", "Value"])
     st.dataframe(df, width="stretch", hide_index=True)
@@ -155,6 +183,13 @@ STOCK_CODES = ["09868", "06082", "0700", "9988", "0700", "0005"]
 with st.sidebar:
     st.title("📈 HK Stock Monitor")
     st.caption("Technical-analysis reference dashboard (no investment advice).")
+
+    # Show the last-analysed stock name (short name) once a run has completed.
+    _last = st.session_state.get("last_report")
+    if _last:
+        _sym = _last.get("symbol", "")
+        _name = _last.get("name", "")
+        st.caption(f"**{_sym}**" + (f" · {_name}" if _name else ""))
 
     symbol = st.text_input("HK stock code", value=load_sidebar_state()).strip()
     st.caption("e.g. 09868, 06082, 0700, 9988 (leading zeros optional)")
@@ -195,7 +230,13 @@ with st.spinner(f"Fetching & analysing {symbol}..."):
         )
         st.stop()
 
-st.title(f"📈 {report['symbol']}")
+# Remember the latest report so the sidebar can show the short name on rerun.
+st.session_state["last_report"] = report
+
+sym = report["symbol"]
+name = (report.get("name") or "").strip()
+title = f"📈 {sym}" + (f" · {name}" if name else "")
+st.title(title)
 
 # --- Metrics row ---
 if ref:
@@ -211,7 +252,7 @@ if ref:
 
 # --- Chart ---
 chart_png = render_chart(ta, report["symbol"])
-st.image(chart_png, width="stretch", caption=f"{report['symbol']} — chart")
+st.image(chart_png, width="stretch", caption=title)
 
 # --- Reference table ---
 with st.expander("📊 Reference levels", expanded=True):
