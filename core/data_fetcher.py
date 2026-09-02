@@ -122,6 +122,33 @@ def fetch_yahoo(code: str, lookback_days: int = 365) -> pd.DataFrame:
     raise last_exc
 
 
+def resolve_stock_name(code: str) -> str:
+    """Resolve a HK stock's display short name independently of the price source.
+
+    Uses a lightweight Yahoo chart call (short range) to read
+    ``meta.shortName`` (e.g. "SMIC", "TENCENT"). Returns "" if it cannot be
+    determined (network / rate-limited / unknown code), so callers fall back
+    to showing just the code number.
+    """
+    sym = normalize_symbol(code)
+    last_err: Optional[Exception] = None
+    for host in _YAHOO_HOSTS:
+        try:
+            url = f"https://{host}/v8/finance/chart/{sym}?range=1d&interval=1d"
+            resp = _http_get(url, timeout=10)
+            data = resp.json()
+            meta = data["chart"]["result"][0].get("meta") or {}
+            name = (meta.get("shortName") or meta.get("longName") or "").strip()
+            if name:
+                return name
+            return ""
+        except Exception as exc:
+            last_err = exc
+            continue  # try next host
+    # Remote/validation failures are non-fatal: caller falls back to the code.
+    return ""
+
+
 def fetch_history(code: str, lookback: int = 120, sources: Optional[List[str]] = None) -> pd.DataFrame:
     """
     Fetch historical OHLC for a HK stock code.

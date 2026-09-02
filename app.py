@@ -38,7 +38,7 @@ import sys
 sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.join(_HERE, "core"))
 
-from data_fetcher import fetch_history  # noqa: E402
+from data_fetcher import fetch_history, resolve_stock_name  # noqa: E402
 from ta_engine import compute_indicators, derive_reference_levels  # noqa: E402
 from chart import render_chart  # noqa: E402
 from news_scraper import NewsScraper  # noqa: E402
@@ -71,8 +71,16 @@ def build_report(symbol: str) -> dict:
     ta = compute_indicators(hist)
     ref = derive_reference_levels(ta)
 
-    # Display name comes from the data source metadata (e.g. Yahoo shortName "SMIC").
+    # Display name comes first from the data-source metadata (Yahoo shortName).
+    # If the price came from Stooq (Yahoo rate-limited/fallback) there is no
+    # metadata, so resolve the short name independently (best-effort; fallback
+    # to "" -> caller shows just the code).
     stock_name = hist.attrs.get("stock_name") or ""
+    if not stock_name:
+        try:
+            stock_name = resolve_stock_name(symbol)
+        except Exception:
+            stock_name = ""
 
     news = []
     try:
